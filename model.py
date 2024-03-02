@@ -22,19 +22,18 @@ def visualize():
             #Show in the GUI
             lblVideo.configure(image=img)
             lblVideo.image = img
-            lblVideo.after(10,Visualizar)
+            lblVideo.after(10,visualize)
         else:
             cap.release()
-
 
 #Start Function
 def start():
     global cap
-    cap = cv2.VideoCapture(1,cv2.CAP_DSHOW)
+    cap = cv2.VideoCapture(0,cv2.CAP_DSHOW)
     visualize()
 def endit():
     cap.release()
-    cv2.DestroyAllWindows()
+    cv2.destroyAllWindows()
 
 
 #Creation of Main Window
@@ -61,6 +60,12 @@ start.place(x=100, y=580)
 #Stop Video
 end = Button(window, text="End Data Adqusition", height="40", width="200", command=endit)
 end.place(x=980, y=580)
+
+#Video
+lblVideo = Label(window)
+lblVideo.place(x=320,y=50)
+
+window.mainloop()
 
 
 
