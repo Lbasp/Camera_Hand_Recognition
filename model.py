@@ -17,6 +17,8 @@ from matplotlib.figure import Figure
 
 import cv2
 import mediapipe as mp
+import tensorflow as tf
+from tensorflow.keras.models import load_model
 
 from PyQt5.QtCore import QSize, Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap
@@ -34,7 +36,22 @@ from PyQt5.QtWidgets import  (
   QWidget, 
   QStackedWidget,
 )
+#Mediapipe hand recognition
+mpHands = mp.solutions.hands
+hands = mpHands.Hands(max_num_hands=1, min_detection_confidence=0.7)
+mpDraw = mp.solutions.drawing_utils
 
+#Load the gesture recognition model
+model = load_model('mp_hand_gesture')
+
+# Load class names
+f = open('gesture.names', 'r')
+classNames = f.read().split('\n')
+f.close()
+
+
+#Select the gestures that would not be accepted in the system of EMG
+values_not_allowed = [ 7, 5, 2, 3, 9]
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -136,11 +153,37 @@ class Worker1(QThread):
     def run(self):
         self.ThreadActive = True
         Capture = cv2.VideoCapture(0)
+
         while self.ThreadActive:
             ret, frame = Capture.read()
+            x, y , c = frame.shape
             if ret:
                 Image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 FlippedImage = cv2.flip(Image, 1)
+                result = hands.process(FlippedImage)
+                if result.multi_hand_landmarks:
+                        landmarks = []
+                        for handslms in result.multi_hand_landmarks:
+                            for lm in handslms.landmark:
+                                # print(id, lm)
+                                lmx = int(lm.x * x)
+                                lmy = int(lm.y * y)
+
+                                landmarks.append([lmx, lmy])
+
+                            # Drawing landmarks on frames
+                            mpDraw.draw_landmarks(FlippedImage, handslms, mpHands.HAND_CONNECTIONS)
+                            prediction = model.predict([landmarks])
+                            # print(prediction)
+                            classID = np.argmax(prediction)
+                            className = classNames[classID]
+
+                            if classID in values_not_allowed:
+                                pass
+                            else:
+                                print(classID,className)
+
+
                 ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
                 Pic = ConvertToQtFormat.scaled(640, 480, Qt.KeepAspectRatio)
                 self.ImageUpdate.emit(Pic)
