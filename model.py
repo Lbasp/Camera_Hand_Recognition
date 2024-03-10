@@ -1,71 +1,157 @@
-from tkinter import *
-from PIL import Image, ImageTk
-import cv2
-import imutils
+import os
+
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+import sys
+
+
 import numpy as np
+import pandas as pd
+from datetime import datetime
+from pathlib import Path
 
-def visualize():
-    global window
-    if cap is not None:
-        ret, frame = cap.read()
+import matplotlib
+matplotlib.use("Qt5Agg")
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
 
-        if ret == True:
-            frame = cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
+import cv2
+import mediapipe as mp
 
-            #Resize video
-            frame = imutils.resize(frame, width=640)
+from PyQt5.QtCore import QSize, Qt, QTimer, QThread, pyqtSignal
+from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtWidgets import  (
+  QApplication,
+  QComboBox,
+  QHBoxLayout,
+  QCheckBox,
+  QSpinBox,
+  QLabel,
+  QMainWindow,
+  QPushButton,
+  QStackedLayout,
+  QVBoxLayout,
+  QWidget, 
+  QStackedWidget,
+)
 
-            #Convert the video
-            im = Image.fromarray(frame)
-            img = ImageTk.PhotoImage(image=im)
-
-            #Show in the GUI
-            lblVideo.configure(image=img)
-            lblVideo.image = img
-            lblVideo.after(10,visualize)
-        else:
-            cap.release()
-
-#Start Function
-def start():
-    global cap
-    cap = cv2.VideoCapture(0,cv2.CAP_DSHOW)
-    visualize()
-def endit():
-    cap.release()
-    cv2.destroyAllWindows()
-
-
-#Creation of Main Window
-#Window
-window = Tk()
-window.title("Camera and EMG recognition")
-window.geometry()
-window.geometry("1280x720")
-
-#Interface
-text1 = Label(window, text="Video en Tiempo Real")
-text1.place(x=580, y=10)
-
-text2 = Label(window, text="EMG Data Adquisition")
-text2.place(x=1010, y=100)
-
-text3= Label(window, text="Gesture Detection")
-text3.place(x=110, y=100)
-
-#Botons
-#Initiate Video Capture
-start = Button(window, text="Initiate", height="40", width="200", command=start)
-start.place(x=100, y=580)
-#Stop Video
-end = Button(window, text="End Data Adqusition", height="40", width="200", command=endit)
-end.place(x=980, y=580)
-
-#Video
-lblVideo = Label(window)
-lblVideo.place(x=320,y=50)
-
-window.mainloop()
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle('EMG and Camera data union')
 
 
+        self.cap = cv2.VideoCapture(0)
 
+
+        #Location from where the app starts
+        self.left=30
+        self.top=50
+
+        #Size in which the app starts
+        self.width=960
+        self.height=520
+        #Setting of the Location and Size parameters for initiation
+        self.setGeometry(self.left,self.top,self.width,self.height)
+
+        #Define the stacked widget where all the different aplication would be put on
+        self.stacked_widget = QHBoxLayout(self)
+        #Stack to put all the plots of the EMG data
+        self.stack1 = QWidget()
+        #Stack to put Camara frames
+        self.stack2 = QWidget()
+
+        self.stacked_widget.addWidget(self.stack1)
+        self.stacked_widget.addWidget(self.stack2)
+        #Initiate plots
+        self.stack_1()
+
+        #Initiate camera viewer
+
+        self.VBL = QVBoxLayout()
+
+        self.CameraLabel = QLabel()
+        self.VBL.addWidget(self.CameraLabel)
+
+        self.CancelBTN = QPushButton("Cancel")
+        self.CancelBTN.clicked.connect(self.CancelFeed)
+        self.VBL.addWidget(self.CancelBTN)
+
+        self.Worker1 = Worker1()
+        self.Worker1.start()
+        self.Worker1.ImageUpdate.connect(self.ImageUpdateSlot)
+        self.stack2.setLayout(self.VBL)
+    
+
+        widget = QWidget()
+        widget.setLayout(self.stacked_widget)
+        self.setCentralWidget(widget)
+
+    def ImageUpdateSlot(self, Image):
+        self.CameraLabel.setPixmap(QPixmap.fromImage(Image))
+    
+    def CancelFeed(self):
+        self.Worker1.stop()
+
+    def stack_1(self):
+        #Define the plot leyout box
+        plots_layout = QVBoxLayout()
+        #Define the figure, canva and toolbar
+        self.figure = Figure(figsize=(5, 4), dpi=100)
+        self.canvas = FigureCanvas(self.figure)
+        #Define the plots variables, such as axis and that sort of stuff
+        self.ax1 = self.figure.add_subplot(4,2,1)
+        self.sc1 = self.ax1.scatter([],[])
+
+        self.ax2 = self.figure.add_subplot(4,2,2)
+        self.sc2 = self.ax2.scatter([],[])
+
+        self.ax3 = self.figure.add_subplot(4,2,3)
+        self.sc3 = self.ax3.scatter([],[])
+
+        self.ax4 = self.figure.add_subplot(4,2,4)
+        self.sc4 = self.ax4.scatter([],[])
+        
+        self.ax5 = self.figure.add_subplot(4,2,5)
+        self.sc5 = self.ax5.scatter([],[])
+        
+        self.ax6 = self.figure.add_subplot(4,2,6)
+        self.sc6 = self.ax6.scatter([],[])
+
+        self.ax7 = self.figure.add_subplot(4,2,7)
+        self.sc7 = self.ax7.scatter([],[])
+
+        self.ax8 = self.figure.add_subplot(4,2,8)
+        self.sc8 = self.ax8.scatter([],[])
+
+        self.figure.tight_layout(pad=1.08, h_pad=0, w_pad=0)
+
+        plots_layout.addWidget(self.canvas)
+
+        self.stack1.setLayout(plots_layout)
+
+class Worker1(QThread):
+    ImageUpdate = pyqtSignal(QImage)
+    
+    def run(self):
+        self.ThreadActive = True
+        Capture = cv2.VideoCapture(0)
+        while self.ThreadActive:
+            ret, frame = Capture.read()
+            if ret:
+                Image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                FlippedImage = cv2.flip(Image, 1)
+                ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
+                Pic = ConvertToQtFormat.scaled(640, 480, Qt.KeepAspectRatio)
+                self.ImageUpdate.emit(Pic)
+        Capture.release()
+    def stop(self):
+        self.ThreadActive = False
+        self.quit()
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
